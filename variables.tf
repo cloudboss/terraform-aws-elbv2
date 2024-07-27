@@ -238,6 +238,7 @@ variable "target_group" {
     lambda_multi_value_headers_enabled = optional(bool, null)
     load_balancing_algorithm_type      = optional(string, null)
     load_balancing_anomaly_mitigation  = optional(string, null)
+    load_balancing_cross_zone_enabled  = optional(bool, null)
     port                               = optional(number, null)
     preserve_client_ip                 = optional(bool, null)
     protocol                           = optional(string, null)
@@ -253,6 +254,16 @@ variable "target_group" {
     target_failover = optional(object({
       on_deregistration = optional(string, null)
       on_unhealthy      = optional(string, null)
+    }), null)
+    target_group_health = optional(object({
+      dns_failover = optional(object({
+        minimum_healthy_targets_count      = optional(string, null)
+        minimum_healthy_targets_percentage = optional(string, null)
+      }), null)
+      unhealthy_state_routing = optional(object({
+        minimum_healthy_targets_count      = optional(string, null)
+        minimum_healthy_targets_percentage = optional(string, null)
+      }), null)
     }), null)
     target_health_state = optional(object({
       enable_unhealthy_connection_termination = optional(bool, null)

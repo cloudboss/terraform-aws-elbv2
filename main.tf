@@ -128,6 +128,26 @@ locals {
   tags_listener_rule = merge(local.tags_listener, var.tags.listener)
   tags_target_group  = merge(var.tags.default, var.tags.target_group)
 
+  target_connection_termination = (
+    var.type == "network"
+    ? var.target_group.connection_termination
+    : null
+  )
+  target_anomaly_mitigation = (
+    var.target_group.load_balancing_algorithm_type == "weighted_random"
+    ? var.target_group.load_balancing_anomaly_mitigation
+    : null
+  )
+  target_lambda_multi_value_headers_enabled = (
+    var.target_group.target_type == "lambda"
+    ? var.target_group.lambda_multi_value_headers_enabled
+    : null
+  )
+  target_protocol = (
+    var.target_group.target_type == "lambda"
+    ? null
+    : var.target_group.protocol
+  )
   target_protocol_version = (
     var.target_group.protocol == "HTTP" || var.target_group.protocol == "HTTPS"
     ? var.target_group.protocol_version
@@ -475,15 +495,98 @@ resource "aws_lb_listener_certificate" "them" {
 }
 
 resource "aws_lb_target_group" "it" {
-  connection_termination = var.target_group.connection_termination
-  deregistration_delay   = var.target_group.deregistration_delay
-  ip_address_type        = local.target_ip_address_type
-  name                   = var.name
-  port                   = var.target_group.port
-  protocol               = var.target_group.protocol
-  protocol_version       = local.target_protocol_version
-  proxy_protocol_v2      = local.target_proxy_protocol_v2
-  tags                   = length(local.tags_target_group) > 0 ? local.tags_target_group : null
-  target_type            = var.target_group.target_type
-  vpc_id                 = var.vpc_id
+  connection_termination             = local.target_connection_termination
+  deregistration_delay               = var.target_group.deregistration_delay
+  ip_address_type                    = local.target_ip_address_type
+  lambda_multi_value_headers_enabled = local.target_lambda_multi_value_headers_enabled
+  load_balancing_algorithm_type      = var.target_group.load_balancing_algorithm_type
+  load_balancing_anomaly_mitigation  = local.target_anomaly_mitigation
+  load_balancing_cross_zone_enabled  = var.target_group.load_balancing_cross_zone_enabled
+  name                               = var.name
+  port                               = var.target_group.port
+  preserve_client_ip                 = var.target_group.preserve_client_ip
+  protocol                           = local.target_protocol
+  protocol_version                   = local.target_protocol_version
+  proxy_protocol_v2                  = local.target_proxy_protocol_v2
+  slow_start                         = var.target_group.slow_start
+  tags                               = length(local.tags_target_group) > 0 ? local.tags_target_group : null
+  target_type                        = var.target_group.target_type
+  vpc_id                             = var.vpc_id
+
+  dynamic "health_check" {
+    for_each = var.target_group.health_check == null ? [] : [var.target_group.health_check]
+    content {
+      enabled             = health_check.value.enabled
+      healthy_threshold   = health_check.value.healthy_threshold
+      interval            = health_check.value.interval
+      matcher             = health_check.value.matcher
+      path                = health_check.value.path
+      port                = health_check.value.port
+      protocol            = health_check.value.protocol
+      timeout             = health_check.value.timeout
+      unhealthy_threshold = health_check.value.unhealthy_threshold
+    }
+  }
+
+  dynamic "stickiness" {
+    for_each = var.target_group.stickiness == null ? [] : [var.target_group.stickiness]
+    content {
+      cookie_duration = stickiness.value.cookie_duration
+      cookie_name     = stickiness.value.cookie_name
+      enabled         = stickiness.value.enabled
+      type            = stickiness.value.type
+    }
+  }
+
+  dynamic "target_failover" {
+    for_each = var.target_group.target_failover == null ? [] : [var.target_group.target_failover]
+    content {
+      on_deregistration = target_failover.value.on_deregistration
+      on_unhealthy      = target_failover.value.on_unhealthy
+    }
+  }
+
+  dynamic "target_group_health" {
+    for_each = (var.target_group.target_group_health == null
+      ? []
+      : [var.target_group.target_group_health]
+    )
+    content {
+      dynamic "dns_failover" {
+        for_each = (target_group_health.value.dns_failover == null
+          ? []
+          : [target_group_health.value.dns_failover]
+        )
+        iterator = it
+        content {
+          minimum_healthy_targets_count      = it.value.minimum_healthy_targets_count
+          minimum_healthy_targets_percentage = it.value.minimum_healthy_targets_percentage
+        }
+      }
+
+      dynamic "unhealthy_state_routing" {
+        for_each = (target_group_health.value.unhealthy_state_routing == null
+          ? []
+          : [target_group_health.value.unhealthy_state_routing]
+        )
+        iterator = it
+        content {
+          minimum_healthy_targets_count      = it.value.minimum_healthy_targets_count
+          minimum_healthy_targets_percentage = it.value.minimum_healthy_targets_percentage
+        }
+      }
+    }
+  }
+
+  dynamic "target_health_state" {
+    for_each = (
+      var.target_group.target_health_state == null
+      ? []
+      : [var.target_group.target_health_state]
+    )
+    iterator = it
+    content {
+      enable_unhealthy_connection_termination = it.value.enable_unhealthy_connection_termination
+    }
+  }
 }
